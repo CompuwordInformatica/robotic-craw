@@ -1,0 +1,135 @@
+#include "VarSpeedServo.h"  // Biblioteca para controle de servos com velocidade
+#include <avr/wdt.h>        // Biblioteca para o watchdog timer
+
+// Definição dos objetos servos do braço robótico
+VarSpeedServo servoBase;    // Base (rotação contínua)
+VarSpeedServo servoAltura;  // Altura
+VarSpeedServo servoGarra;   // Garra
+
+// Teclas do teclado para controlar a altura, rotação e garra
+const int teclaSubir = 'Q';           // Subir
+const int teclaDescer = 'E';          // Descer
+const int teclaRotarEsquerda = 'A';   // Girar base para a esquerda
+const int teclaRotarDireita = 'S';    // Girar base para a direita
+const int teclaAbrirGarra = 'F';      // Abrir garra
+const int teclaFecharGarra = 'G';     // Fechar garra
+const int teclaAtivarJoystick = '1';  // Tecla para ativar/desativar o joystick
+
+// Variáveis de controle
+int sBase = 90;    // Posição inicial da base
+int sAltura = 90;  // Posição inicial da altura
+int sGarra = 90;   // Posição inicial da garra
+
+// Variável para controlar o estado do joystick
+bool joystickAtivo = false;
+
+// Limites do movimento da base
+const int baseMin = 10;   // Limite mínimo para a base
+const int baseMax = 170;  // Limite máximo para a base
+
+// Limites da altura e zona morta
+const int centroX = 65;   // Valor neutro para o eixo X do joystick
+const int zonaMorta = 10; // Zona morta para evitar pequenas variações
+
+void setup() {
+  wdt_enable(WDTO_8S);    // Ativa o watchdog com timeout de 8 segundos
+  Serial.begin(9600);     // Inicializa a comunicação serial
+
+  // Anexa os servos aos pinos digitais
+  servoBase.attach(2);    // Base, pino digital 2
+  servoAltura.attach(3);  // Altura, pino digital 3
+  servoGarra.attach(4);   // Garra, pino digital 4
+
+  // Move os outros servos para a posição inicial
+  servoBase.write(sBase);
+  servoAltura.write(sAltura);
+  servoGarra.write(sGarra);
+
+  Serial.println("Sistema inicializado. Use as teclas para controlar o robô.");
+}
+
+void loop() {
+  wdt_reset();  // Reseta o watchdog timer
+
+  // Leitura das teclas do teclado
+  if (Serial.available()) {
+    char tecla = Serial.read();  // Lê a tecla pressionada
+
+    // Alterna o estado do joystick ao pressionar a tecla 1
+    if (tecla == teclaAtivarJoystick) {
+      joystickAtivo = !joystickAtivo;
+      Serial.print("Joystick ");
+      Serial.println(joystickAtivo ? "Ativado" : "Desativado");
+    }
+
+    // Controle manual (somente quando o joystick está desativado)
+    if (!joystickAtivo) {
+      // Controle da rotação da base com range ajustável
+      if (tecla == teclaRotarEsquerda) {  // Tecla A (Girar base para a esquerda)
+        sBase -= 10;
+        if (sBase < baseMin) sBase = baseMin;  // Limita ao mínimo
+        servoBase.write(sBase);
+        Serial.print("Base girando para a esquerda. Posição: ");
+        Serial.println(sBase);
+      }
+      if (tecla == teclaRotarDireita) {  // Tecla S (Girar base para a direita)
+        sBase += 10;
+        if (sBase > baseMax) sBase = baseMax;  // Limita ao máximo
+        servoBase.write(sBase);
+        Serial.print("Base girando para a direita. Posição: ");
+        Serial.println(sBase);
+      }
+
+      // Controle da altura do braço com teclas (Q - Subir, E - Descer)
+      if (tecla == teclaSubir) {  // Tecla Q (Subir)
+        sAltura += 10;
+        if (sAltura > 170) sAltura = 170;  // Limite superior
+        servoAltura.write(sAltura);
+        Serial.print("Altura S para: ");
+        Serial.println(sAltura);
+      }
+      if (tecla == teclaDescer) {  // Tecla E (Descer)
+        sAltura -= 10;
+        if (sAltura < 0) sAltura = 0;  // Limite inferior
+        servoAltura.write(sAltura);
+        Serial.print("Altura reduzida para: ");
+        Serial.println(sAltura);
+      }
+
+      // Controle da garra com as teclas F e G
+      if (tecla == teclaAbrirGarra) {  // Tecla F (Abrir garra)
+        sGarra = 100;  // Posição para abrir
+        servoGarra.write(sGarra);
+        Serial.println("Garra aberta.");
+      }
+      if (tecla == teclaFecharGarra) {  // Tecla G (Fechar garra)
+        sGarra = 50;  // Posição para fechar
+        servoGarra.write(sGarra);
+        Serial.println("Garra fechada.");
+      }
+    } else {
+      servoBase.write(90);  // Posição neutra do servo contínuo enquanto joystick está ativo
+    }
+  }
+
+  // Controle do joystick quando ativado
+  if (joystickAtivo) {
+    int valX = analogRead(A1);  // Leitura do eixo X do joystick (base)
+
+    // Mapeamento do eixo X para controle contínuo da base
+    int mappedX = map(valX, 0, 1023, 0, 180);  // Mapeia para o intervalo do servo contínuo
+
+    // Aplicando a zona morta no eixo X
+    if (abs(valX - centroX) < zonaMorta) {
+      servoBase.write(90);  // Para o movimento (posição neutra)
+    } else {
+      servoBase.write(mappedX);  // Ajusta a rotação
+    }
+
+    // Imprime as coordenadas do joystick no Serial Monitor
+    Serial.print("Joystick - Eixo X (Base): ");
+    Serial.println(valX);
+  }
+
+  delay(80);  // Espera para evitar sobrecarga no loop
+}
